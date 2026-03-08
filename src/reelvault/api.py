@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Optional, Union
 
 from . import header, video
-from .codecs import dense
+from .codecs import dense, robust as robust_codec
 from .errors import NotAReelError, VideoIOError
 
 Source = Union[str, bytes, bytearray, os.PathLike]
@@ -19,22 +19,33 @@ class Reel:
 
 
 def encode(source: Source, output: Union[str, os.PathLike], *, name: Optional[str] = None,
-           fps: int = 30) -> str:
+           robust: bool = False, fps: int = 30, block: int = 4, repeat: int = 2) -> str:
     """
     Store `source` in a video at `output` and return the output path.
 
     `source` is a path to a file, or the bytes themselves.
+
+    robust=False packs 3 bytes per pixel and needs a lossless container
+    (.avi or .mkv). robust=True draws black/white blocks that survive lossy
+    codecs (.mp4, .webm), re-uploads and resizing, at roughly 3x the size.
     """
     output = os.fspath(output)
     data, inferred = _read_source(source)
     name = inferred if name is None else name
 
-    if not video.is_lossless(output):
-        raise VideoIOError("Use a lossless container (.avi or .mkv)")
+    if not robust and not video.is_lossless(output):
+        raise VideoIOError(
+            f"{os.path.splitext(output)[1] or 'That container'} is lossy and would destroy the data. "
+            "Use .avi/.mkv, or pass robust=True for .mp4/.webm."
+        )
 
     buf = header.build(data, name)
     _ensure_parent(output)
-    video.write(output, dense.encode(buf), dense.DEFAULT_SIZE, fps)
+    if robust:
+        side = robust_codec.frame_size(block)
+        video.write(output, robust_codec.encode(buf, block, repeat), (side, side), fps)
+    else:
+        video.write(output, dense.encode(buf), dense.DEFAULT_SIZE, fps)
     return output
 
 
@@ -42,14 +53,22 @@ def decode(path: Union[str, os.PathLike]) -> Reel:
     """Recover the file stored in a video."""
     frames = video.read(os.fspath(path))
     first = next(frames, None)
-    if first is None or not dense.detect(first):
-        raise NotAReelError("This video wasn't made by ReelVault")
+    if first is None:
+        raise NotAReelError("The video has no frames")
 
     def all_frames():
         yield first
         yield from frames
 
-    hdr, payload = header.parse(dense.decode(all_frames()))
+    # The format is detected from the first frame, so callers never need to say which mode was used
+    if dense.detect(first):
+        buf = dense.decode(all_frames())
+    elif robust_codec.detect(first):
+        buf = robust_codec.decode(all_frames())
+    else:
+        raise NotAReelError("This video wasn't made by ReelVault, or is too damaged to recognise")
+
+    hdr, payload = header.parse(buf)
     return Reel(hdr.name, payload)
 
 
