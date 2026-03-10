@@ -39,3 +39,19 @@ def test_rejects_other_videos(tmp_path):
     w.release()
     with pytest.raises(NotAReelError):
         reelvault.decode(path)
+
+
+def test_compression_shrinks_text(tmp_path):
+    from reelvault import header, packing
+    text = b"the same line again and again\n" * 50_000
+    hdr, _ = header.parse(packing.pack(text, "t"))
+    assert hdr.compressed and hdr.payload_len < len(text) / 50
+    for compress in (True, False):
+        out = reelvault.encode(text, tmp_path / f"{compress}.avi", compress=compress)
+        assert reelvault.decode(out).data == text
+
+
+def test_incompressible_data_is_stored_as_is(tmp_path, blob):
+    from reelvault import header, packing
+    hdr, _ = header.parse(packing.pack(blob, "x"))
+    assert not hdr.compressed

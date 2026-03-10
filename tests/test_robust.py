@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 
@@ -36,7 +37,7 @@ def test_survives_lossy_reencode(tmp_path, blob, args):
 @needs_ffmpeg
 def test_reports_missing_frames(tmp_path):
     from reelvault.errors import CorruptReelError
-    data = bytes(range(256)) * 400  # several frames
+    data = os.urandom(8000)  # incompressible, so it spans 4 frames
     src = reelvault.encode(data, tmp_path / "r.mp4", robust=True, repeat=1)
     cut = tmp_path / "cut.mp4"
     subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", src, "-frames:v", "2", "-c:v", "libx264", str(cut)],

@@ -4,7 +4,7 @@ import os
 from dataclasses import dataclass
 from typing import Optional, Union
 
-from . import header, video
+from . import packing, video
 from .codecs import dense, robust as robust_codec
 from .errors import NotAReelError, VideoIOError
 
@@ -19,7 +19,8 @@ class Reel:
 
 
 def encode(source: Source, output: Union[str, os.PathLike], *, name: Optional[str] = None,
-           robust: bool = False, fps: int = 30, block: int = 4, repeat: int = 2) -> str:
+           robust: bool = False, compress: bool = True,
+           fps: int = 30, block: int = 4, repeat: int = 2) -> str:
     """
     Store `source` in a video at `output` and return the output path.
 
@@ -28,6 +29,8 @@ def encode(source: Source, output: Union[str, os.PathLike], *, name: Optional[st
     robust=False packs 3 bytes per pixel and needs a lossless container
     (.avi or .mkv). robust=True draws black/white blocks that survive lossy
     codecs (.mp4, .webm), re-uploads and resizing, at roughly 3x the size.
+
+    compress=True deflates the data first when that makes it smaller.
     """
     output = os.fspath(output)
     data, inferred = _read_source(source)
@@ -39,7 +42,7 @@ def encode(source: Source, output: Union[str, os.PathLike], *, name: Optional[st
             "Use .avi/.mkv, or pass robust=True for .mp4/.webm."
         )
 
-    buf = header.build(data, name)
+    buf = packing.pack(data, name, compress=compress)
     _ensure_parent(output)
     if robust:
         side = robust_codec.frame_size(block)
@@ -68,8 +71,8 @@ def decode(path: Union[str, os.PathLike]) -> Reel:
     else:
         raise NotAReelError("This video wasn't made by ReelVault, or is too damaged to recognise")
 
-    hdr, payload = header.parse(buf)
-    return Reel(hdr.name, payload)
+    hdr, data = packing.unpack(buf)
+    return Reel(hdr.name, data)
 
 
 def _read_source(source: Source):
