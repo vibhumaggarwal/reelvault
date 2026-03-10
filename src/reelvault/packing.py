@@ -7,7 +7,7 @@ Order on the way in: (folder -> zip) -> compress -> encrypt.
 import zlib
 from typing import Optional, Tuple
 
-from . import header
+from . import crypto, header
 from .errors import CorruptReelError
 
 
@@ -27,7 +27,8 @@ def _inflate(data: bytes, expected: int) -> bytes:
     return out
 
 
-def pack(data: bytes, name: str, *, compress: bool = True, flags: int = 0) -> bytes:
+def pack(data: bytes, name: str, *, compress: bool = True, password: Optional[str] = None,
+         flags: int = 0) -> bytes:
     """Build the full reel buffer (header + payload)."""
     payload = data
     if compress:
@@ -36,12 +37,18 @@ def pack(data: bytes, name: str, *, compress: bool = True, flags: int = 0) -> by
         if len(squeezed) < len(data):
             payload = squeezed
             flags |= header.FLAG_DEFLATE
-    return header.build(payload, name, orig_size=len(data), flags=flags)
+    params = None
+    if password is not None:
+        payload, params = crypto.encrypt(payload, password)
+        flags |= header.FLAG_ENCRYPTED
+    return header.build(payload, name, orig_size=len(data), flags=flags, crypto=params)
 
 
-def unpack(buf: bytes) -> Tuple[header.Header, bytes]:
+def unpack(buf: bytes, password: Optional[str] = None) -> Tuple[header.Header, bytes]:
     """Validate a reel buffer and return (header, original bytes)."""
     hdr, payload = header.parse(buf)
+    if hdr.encrypted:
+        payload = crypto.decrypt(payload, password, hdr.crypto)
     if hdr.compressed:
         payload = _inflate(payload, hdr.orig_size)
     return hdr, payload

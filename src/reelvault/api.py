@@ -19,7 +19,7 @@ class Reel:
 
 
 def encode(source: Source, output: Union[str, os.PathLike], *, name: Optional[str] = None,
-           robust: bool = False, compress: bool = True,
+           robust: bool = False, compress: bool = True, password: Optional[str] = None,
            fps: int = 30, block: int = 4, repeat: int = 2) -> str:
     """
     Store `source` in a video at `output` and return the output path.
@@ -31,6 +31,7 @@ def encode(source: Source, output: Union[str, os.PathLike], *, name: Optional[st
     codecs (.mp4, .webm), re-uploads and resizing, at roughly 3x the size.
 
     compress=True deflates the data first when that makes it smaller.
+    password encrypts it with AES-256-GCM; the filename stays readable.
     """
     output = os.fspath(output)
     data, inferred = _read_source(source)
@@ -42,7 +43,7 @@ def encode(source: Source, output: Union[str, os.PathLike], *, name: Optional[st
             "Use .avi/.mkv, or pass robust=True for .mp4/.webm."
         )
 
-    buf = packing.pack(data, name, compress=compress)
+    buf = packing.pack(data, name, compress=compress, password=password)
     _ensure_parent(output)
     if robust:
         side = robust_codec.frame_size(block)
@@ -52,8 +53,8 @@ def encode(source: Source, output: Union[str, os.PathLike], *, name: Optional[st
     return output
 
 
-def decode(path: Union[str, os.PathLike]) -> Reel:
-    """Recover the file stored in a video."""
+def decode(path: Union[str, os.PathLike], password: Optional[str] = None) -> Reel:
+    """Recover the file stored in a video. Pass `password` for encrypted reels."""
     frames = video.read(os.fspath(path))
     first = next(frames, None)
     if first is None:
@@ -71,7 +72,7 @@ def decode(path: Union[str, os.PathLike]) -> Reel:
     else:
         raise NotAReelError("This video wasn't made by ReelVault, or is too damaged to recognise")
 
-    hdr, data = packing.unpack(buf)
+    hdr, data = packing.unpack(buf, password)
     return Reel(hdr.name, data)
 
 

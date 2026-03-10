@@ -15,7 +15,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=7"]
+crypto = ["cryptography>=41"]
+dev = ["pytest>=7", "cryptography>=41"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
