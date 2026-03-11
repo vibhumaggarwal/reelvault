@@ -1,10 +1,12 @@
 """Public encode/decode functions."""
 
+import io
 import os
+import zipfile
 from dataclasses import dataclass
 from typing import Optional, Union
 
-from . import packing, video
+from . import header, packing, video
 from .codecs import dense, robust as robust_codec
 from .errors import NotAReelError, VideoIOError
 
@@ -16,6 +18,23 @@ class Reel:
     """What came out of a video."""
     name: str
     data: bytes
+    is_folder: bool = False
+
+    def save(self, dest: Optional[Union[str, os.PathLike]] = None, overwrite: bool = False) -> str:
+        """
+        Write the file (or extract the folder) to `dest`, defaulting to the
+        stored name in the current directory. Returns the path written.
+        """
+        dest = os.fspath(dest) if dest is not None else (self.name or "reel_output")
+        if os.path.exists(dest) and not overwrite:
+            raise FileExistsError(f"{dest} already exists")
+        if self.is_folder:
+            with zipfile.ZipFile(io.BytesIO(self.data)) as zf:
+                _safe_extract(zf, dest)
+        else:
+            with open(dest, "wb") as f:
+                f.write(self.data)
+        return dest
 
 
 def encode(source: Source, output: Union[str, os.PathLike], *, name: Optional[str] = None,
@@ -24,7 +43,8 @@ def encode(source: Source, output: Union[str, os.PathLike], *, name: Optional[st
     """
     Store `source` in a video at `output` and return the output path.
 
-    `source` is a path to a file, or the bytes themselves.
+    `source` is a path to a file or folder, or the bytes themselves.
+    Folders are zipped and restored as folders by Reel.save().
 
     robust=False packs 3 bytes per pixel and needs a lossless container
     (.avi or .mkv). robust=True draws black/white blocks that survive lossy
@@ -34,7 +54,7 @@ def encode(source: Source, output: Union[str, os.PathLike], *, name: Optional[st
     password encrypts it with AES-256-GCM; the filename stays readable.
     """
     output = os.fspath(output)
-    data, inferred = _read_source(source)
+    data, inferred, is_folder = _read_source(source)
     name = inferred if name is None else name
 
     if not robust and not video.is_lossless(output):
@@ -43,7 +63,8 @@ def encode(source: Source, output: Union[str, os.PathLike], *, name: Optional[st
             "Use .avi/.mkv, or pass robust=True for .mp4/.webm."
         )
 
-    buf = packing.pack(data, name, compress=compress, password=password)
+    flags = header.FLAG_FOLDER if is_folder else 0
+    buf = packing.pack(data, name, compress=compress, password=password, flags=flags)
     _ensure_parent(output)
     if robust:
         side = robust_codec.frame_size(block)
@@ -73,15 +94,40 @@ def decode(path: Union[str, os.PathLike], password: Optional[str] = None) -> Ree
         raise NotAReelError("This video wasn't made by ReelVault, or is too damaged to recognise")
 
     hdr, data = packing.unpack(buf, password)
-    return Reel(hdr.name, data)
+    return Reel(hdr.name, data, hdr.folder)
 
 
 def _read_source(source: Source):
+    """Returns (bytes, name, is_folder)."""
     if isinstance(source, (bytes, bytearray)):
-        return bytes(source), ""
+        return bytes(source), "", False
     path = os.fspath(source)
+    if os.path.isdir(path):
+        return _zip_folder(path), os.path.basename(os.path.normpath(path)), True
     with open(path, "rb") as f:
-        return f.read(), os.path.basename(path)
+        return f.read(), os.path.basename(path), False
+
+
+def _zip_folder(path: str) -> bytes:
+    buf = io.BytesIO()
+    # Stored, not deflated: the whole zip gets compressed afterwards anyway
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
+        for root, dirs, files in os.walk(path):
+            dirs.sort()
+            for fname in sorted(files):
+                full = os.path.join(root, fname)
+                zf.write(full, os.path.relpath(full, path))
+    return buf.getvalue()
+
+
+def _safe_extract(zf: zipfile.ZipFile, dest: str):
+    """Extract without letting entries escape `dest` (zip-slip)."""
+    root = os.path.realpath(dest)
+    for member in zf.namelist():
+        target = os.path.realpath(os.path.join(root, member))
+        if target != root and not target.startswith(root + os.sep):
+            raise ValueError(f"Unsafe path in archive: {member}")
+    zf.extractall(root)
 
 
 def _ensure_parent(path: str):
