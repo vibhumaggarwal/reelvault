@@ -18,6 +18,9 @@ dependencies = [
 crypto = ["cryptography>=41"]
 dev = ["pytest>=7", "cryptography>=41"]
 
+[project.scripts]
+reelvault = "reelvault.cli:main"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
