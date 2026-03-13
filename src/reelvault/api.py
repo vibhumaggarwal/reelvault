@@ -97,6 +97,35 @@ def decode(path: Union[str, os.PathLike], password: Optional[str] = None) -> Ree
     return Reel(hdr.name, data, hdr.folder)
 
 
+@dataclass
+class ReelInfo:
+    """What a reel contains, read from its header without decoding the data."""
+    name: str
+    size: int            # original size in bytes
+    stored_size: int     # bytes actually stored (after compression/encryption)
+    mode: str            # "lossless" or "robust"
+    compressed: bool
+    encrypted: bool
+    is_folder: bool
+
+
+def inspect(path: Union[str, os.PathLike]) -> ReelInfo:
+    """Read a reel's header from its first frame. Works without the password."""
+    first = next(video.read(os.fspath(path)), None)
+    if first is None:
+        raise NotAReelError("The video has no frames")
+    if dense.detect(first):
+        mode, buf = "lossless", first.tobytes()
+    elif robust_codec.detect(first):
+        mode, buf = "robust", robust_codec.single_frame_bytes(first)
+    else:
+        raise NotAReelError("This video wasn't made by ReelVault, or is too damaged to recognise")
+
+    hdr, _ = header.parse(buf, check_payload=False)
+    return ReelInfo(hdr.name, hdr.orig_size, hdr.payload_len, mode,
+                    hdr.compressed, hdr.encrypted, hdr.folder)
+
+
 def _read_source(source: Source):
     """Returns (bytes, name, is_folder)."""
     if isinstance(source, (bytes, bytearray)):

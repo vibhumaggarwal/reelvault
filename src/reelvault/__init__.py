@@ -2,6 +2,6 @@
 
 __version__ = "0.1.0"
 
-from .api import Reel, decode, encode
+from .api import Reel, ReelInfo, decode, encode, inspect
 
-__all__ = ["encode", "decode", "Reel"]
+__all__ = ["encode", "decode", "inspect", "Reel", "ReelInfo"]

@@ -125,3 +125,11 @@ def detect(frame: np.ndarray) -> bool:
         return False
     magic = np.packbits(lv[HEADER_BITS:HEADER_BITS + 32] > 127).tobytes()
     return header.looks_like_reel(magic)
+
+
+def single_frame_bytes(frame: np.ndarray) -> bytes:
+    """Payload bytes carried by one frame (enough to read the reel header from frame 0)."""
+    lv = levels(frame)
+    _, _, plen = read_frame_header(lv)
+    bits = lv[HEADER_BITS:HEADER_BITS + min(plen, PAYLOAD_BITS)] > 127
+    return np.packbits(bits[: len(bits) // 8 * 8]).tobytes()
