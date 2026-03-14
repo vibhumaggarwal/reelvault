@@ -4,13 +4,25 @@ import io
 import os
 import zipfile
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Callable, Iterable, Iterator, Optional, Union
 
 from . import header, packing, video
 from .codecs import dense, robust as robust_codec
 from .errors import NotAReelError, VideoIOError
 
 Source = Union[str, bytes, bytearray, os.PathLike]
+Progress = Optional[Callable[[int, int], None]]   # (frames_done, frames_total)
+
+
+def _track(frames: Iterable, total: int, progress: Progress) -> Iterator:
+    if progress is None:
+        yield from frames
+        return
+    done = 0
+    for frame in frames:
+        yield frame
+        done += 1
+        progress(done, max(total, done))
 
 
 @dataclass
@@ -39,7 +51,7 @@ class Reel:
 
 def encode(source: Source, output: Union[str, os.PathLike], *, name: Optional[str] = None,
            robust: bool = False, compress: bool = True, password: Optional[str] = None,
-           fps: int = 30, block: int = 4, repeat: int = 2) -> str:
+           fps: int = 30, block: int = 4, repeat: int = 2, progress: Progress = None) -> str:
     """
     Store `source` in a video at `output` and return the output path.
 
@@ -52,6 +64,7 @@ def encode(source: Source, output: Union[str, os.PathLike], *, name: Optional[st
 
     compress=True deflates the data first when that makes it smaller.
     password encrypts it with AES-256-GCM; the filename stays readable.
+    progress, if given, is called as progress(frames_done, frames_total).
     """
     output = os.fspath(output)
     data, inferred, is_folder = _read_source(source)
@@ -68,15 +81,20 @@ def encode(source: Source, output: Union[str, os.PathLike], *, name: Optional[st
     _ensure_parent(output)
     if robust:
         side = robust_codec.frame_size(block)
-        video.write(output, robust_codec.encode(buf, block, repeat), (side, side), fps)
+        total = robust_codec.frame_count(len(buf)) * repeat
+        video.write(output, _track(robust_codec.encode(buf, block, repeat), total, progress), (side, side), fps)
     else:
-        video.write(output, dense.encode(buf), dense.DEFAULT_SIZE, fps)
+        w, h = dense.DEFAULT_SIZE
+        total = max(1, -(-len(buf) // (w * h * 3)))
+        video.write(output, _track(dense.encode(buf), total, progress), dense.DEFAULT_SIZE, fps)
     return output
 
 
-def decode(path: Union[str, os.PathLike], password: Optional[str] = None) -> Reel:
+def decode(path: Union[str, os.PathLike], password: Optional[str] = None,
+           progress: Progress = None) -> Reel:
     """Recover the file stored in a video. Pass `password` for encrypted reels."""
-    frames = video.read(os.fspath(path))
+    path = os.fspath(path)
+    frames = _track(video.read(path), video.frame_count(path), progress)
     first = next(frames, None)
     if first is None:
         raise NotAReelError("The video has no frames")

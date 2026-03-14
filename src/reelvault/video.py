@@ -69,5 +69,14 @@ def read(path: str) -> Iterator[np.ndarray]:
         cap.release()
 
 
+def frame_count(path: str) -> int:
+    """Frame count from the container's metadata (may be 0 if unknown)."""
+    cap = cv2.VideoCapture(path)
+    try:
+        return max(0, int(cap.get(cv2.CAP_PROP_FRAME_COUNT)))
+    finally:
+        cap.release()
+
+
 def _ext(path: str) -> str:
     return os.path.splitext(os.fspath(path))[1].lower()

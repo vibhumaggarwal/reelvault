@@ -22,6 +22,26 @@ def _size(n: int) -> str:
         n /= 1024
 
 
+class _Bar:
+    """One-line progress bar on stderr; silent when not attached to a terminal."""
+
+    def __init__(self, label: str):
+        self.label = label
+        self.active = sys.stderr.isatty()
+
+    def __call__(self, done: int, total: int):
+        if not self.active:
+            return
+        width = 28
+        filled = int(width * done / total) if total else width
+        sys.stderr.write(f"\r{self.label} [{'#' * filled}{'.' * (width - filled)}] {done}/{total} frames")
+        sys.stderr.flush()
+
+    def close(self):
+        if self.active:
+            sys.stderr.write("\r" + " " * 70 + "\r")
+
+
 def _ask_password(confirm: bool) -> str:
     pw = getpass.getpass("Password: ")
     if confirm and getpass.getpass("Repeat password: ") != pw:
@@ -37,7 +57,12 @@ def cmd_encode(args):
         sys.exit(f"error: {out} already exists (use -o or -f)")
     password = _ask_password(confirm=True) if args.password else None
 
-    encode(src, out, robust=args.robust, compress=not args.no_compress, password=password, fps=args.fps)
+    bar = _Bar("Encoding")
+    try:
+        encode(src, out, robust=args.robust, compress=not args.no_compress, password=password,
+               fps=args.fps, progress=bar)
+    finally:
+        bar.close()
     info = inspect(out)
     print(f"{src} -> {out}")
     print(f"  {_size(info.size)} stored as a {_size(os.path.getsize(out))} {info.mode} video"
@@ -47,7 +72,11 @@ def cmd_encode(args):
 def cmd_decode(args):
     info = inspect(args.video)
     password = _ask_password(confirm=False) if info.encrypted else None
-    reel = decode(args.video, password=password)
+    bar = _Bar("Decoding")
+    try:
+        reel = decode(args.video, password=password, progress=bar)
+    finally:
+        bar.close()
     dest = reel.save(args.output, overwrite=args.force)
     kind = "folder" if reel.is_folder else "file"
     print(f"{args.video} -> {dest} ({kind}, {_size(len(reel.data))}, checksum OK)")

@@ -55,3 +55,13 @@ def test_incompressible_data_is_stored_as_is(tmp_path, blob):
     from reelvault import header, packing
     hdr, _ = header.parse(packing.pack(blob, "x"))
     assert not hdr.compressed
+
+
+def test_progress_callback(tmp_path):
+    calls = []
+    data = bytes(range(256)) * 20_000
+    out = reelvault.encode(data, tmp_path / "p.avi", compress=False, progress=lambda d, t: calls.append((d, t)))
+    assert calls[-1] == (2, 2)
+    seen = []
+    reelvault.decode(out, progress=lambda d, t: seen.append(d))
+    assert seen and seen[0] == 1
