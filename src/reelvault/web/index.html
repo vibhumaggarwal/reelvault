@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ReelVault</title>
+  <meta name="description" content="Store any file inside a video and get it back byte-for-byte. Runs entirely in your browser.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@600;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="sprockets" aria-hidden="true"></div>
+  <div class="page">
+    <header class="hero">
+      <p class="eyebrow">Files in, video out, files back</p>
+      <h1>Reel<span>Vault</span></h1>
+      <p class="lede">Turn any file into a video that survives compression and re-uploads, then turn the video back into the exact same file. Everything runs in this tab; nothing is uploaded.</p>
+    </header>
+
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab-encode" aria-controls="panel-encode" aria-selected="true">Encode</button>
+      <button class="tab" role="tab" id="tab-decode" aria-controls="panel-decode" aria-selected="false">Decode</button>
+    </div>
+
+    <main>
+      <section class="panel" id="panel-encode" role="tabpanel" aria-labelledby="tab-encode">
+        <label class="drop" id="encode-drop">
+          <input type="file" id="encode-input">
+          <span class="drop-title">Drop a file here</span>
+          <span class="drop-sub">or click to choose one</span>
+        </label>
+        <div class="chosen" id="encode-chosen" hidden>
+          <span class="chip">File</span>
+          <span class="chosen-name" id="encode-name"></span>
+          <span class="chosen-size" id="encode-size"></span>
+          <button class="clear" id="encode-clear" type="button" aria-label="Remove file">Remove</button>
+        </div>
+
+        <div class="options">
+          <label class="field">
+            <span>Password <em>(optional)</em></span>
+            <input type="password" id="encode-password" autocomplete="new-password" placeholder="Leave empty for no encryption">
+          </label>
+          <label class="check">
+            <input type="checkbox" id="encode-compress" checked>
+            <span>Compress first when it helps</span>
+          </label>
+        </div>
+
+        <button class="go" id="encode-go" type="button" disabled>Make the video</button>
+
+        <div class="work" id="encode-work" hidden>
+          <canvas id="encode-canvas" width="512" height="512" aria-label="Frame being recorded"></canvas>
+          <div class="meter"><div class="meter-fill" id="encode-meter"></div></div>
+          <p class="status" id="encode-status"></p>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-decode" role="tabpanel" aria-labelledby="tab-decode" hidden>
+        <label class="drop" id="decode-drop">
+          <input type="file" id="decode-input" accept="video/webm,video/mp4,.webm,.mp4">
+          <span class="drop-title">Drop a ReelVault video</span>
+          <span class="drop-sub">.webm or .mp4 made in robust mode</span>
+        </label>
+        <div class="chosen" id="decode-chosen" hidden>
+          <span class="chip">Video</span>
+          <span class="chosen-name" id="decode-name"></span>
+          <span class="chosen-size" id="decode-size"></span>
+          <button class="clear" id="decode-clear" type="button" aria-label="Remove video">Remove</button>
+        </div>
+
+        <div class="options">
+          <label class="field">
+            <span>Password <em>(if it was encrypted)</em></span>
+            <input type="password" id="decode-password" autocomplete="current-password">
+          </label>
+        </div>
+
+        <button class="go" id="decode-go" type="button" disabled>Get the file back</button>
+
+        <div class="work" id="decode-work" hidden>
+          <canvas id="decode-canvas" width="512" height="512" aria-label="Frame being read"></canvas>
+          <video id="decode-video" muted playsinline hidden></video>
+          <div class="meter"><div class="meter-fill" id="decode-meter"></div></div>
+          <p class="status" id="decode-status"></p>
+        </div>
+      </section>
+    </main>
+
+    <section class="explain">
+      <h2>How it works</h2>
+      <ol>
+        <li><b>Header.</b> Your file gets a small header: its name, size and a CRC-32 checksum. It is optionally compressed (deflate) and encrypted (AES-256-GCM, key from PBKDF2).</li>
+        <li><b>Frames.</b> Every bit becomes a black or white square on a 128&times;128 grid. Each frame starts with its own index and the total frame count.</li>
+        <li><b>Decoding.</b> The decoder averages each square's brightness and lets repeated copies of a frame vote on every bit. That's why the video survives compression.</li>
+      </ol>
+      <p class="note">Videos made here decode with the <code>reelvault</code> command-line tool, and its <code>--robust</code> videos decode here. The tool's default lossless <code>.avi</code> reels are much smaller but need the command-line tool; browsers can't play them.</p>
+    </section>
+
+    <div class="toasts" id="toasts" aria-live="polite"></div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
