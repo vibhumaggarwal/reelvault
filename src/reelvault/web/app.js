@@ -202,3 +202,121 @@ function dropZone(kind) {
 
 const encodeFile = dropZone("encode");
 const decodeFile = dropZone("decode");
+
+// ================================================================
+// Robust frame codec (matches reelvault/codecs/robust.py)
+// ================================================================
+const GRID = 128, CELLS = GRID * GRID;
+const INDEX_BITS = 32, COUNT_BITS = 32, LEN_BITS = 16;
+const HEADER_BITS = INDEX_BITS + COUNT_BITS + LEN_BITS;
+const PAYLOAD_BITS = CELLS - HEADER_BITS; // 16,304
+const BLOCK = 4, SIDE = GRID * BLOCK;      // 512 x 512 frames
+const COPIES = 3;                          // recorded copies of each frame
+const COPY_GAP_MS = 45;
+
+function writeBits(cells, offset, value, width) {
+  for (let i = 0; i < width; i++) cells[offset + i] = Math.floor(value / 2 ** (width - 1 - i)) % 2;
+}
+
+function frameCells(reelBits, idx, total) {
+  const cells = new Uint8Array(CELLS);
+  const start = idx * PAYLOAD_BITS;
+  const len = Math.min(PAYLOAD_BITS, reelBits.length - start);
+  writeBits(cells, 0, idx, INDEX_BITS);
+  writeBits(cells, INDEX_BITS, total, COUNT_BITS);
+  writeBits(cells, INDEX_BITS + COUNT_BITS, len, LEN_BITS);
+  cells.set(reelBits.subarray(start, start + len), HEADER_BITS);
+  return cells;
+}
+
+function toBits(bytes) {
+  const bits = new Uint8Array(bytes.length * 8);
+  for (let i = 0; i < bytes.length; i++) {
+    for (let b = 0; b < 8; b++) bits[i * 8 + b] = (bytes[i] >> (7 - b)) & 1;
+  }
+  return bits;
+}
+
+function paintCells(ctx, cells) {
+  const img = ctx.createImageData(SIDE, SIDE);
+  const px = img.data;
+  for (let y = 0; y < SIDE; y++) {
+    const row = ((y / BLOCK) | 0) * GRID;
+    for (let x = 0; x < SIDE; x++) {
+      const v = cells[row + ((x / BLOCK) | 0)] ? 255 : 0;
+      const i = (y * SIDE + x) * 4;
+      px[i] = px[i + 1] = px[i + 2] = v;
+      px[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+function pickRecorderType() {
+  const types = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm", "video/mp4"];
+  return types.find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// ================================================================
+// Encode
+// ================================================================
+$("encode-go").addEventListener("click", async () => {
+  const file = encodeFile();
+  if (!file) return;
+  const go = $("encode-go"), status = $("encode-status"), meter = $("encode-meter");
+  const canvas = $("encode-canvas"), ctx = canvas.getContext("2d");
+  go.disabled = true;
+  $("encode-work").hidden = false;
+  meter.style.width = "0%";
+
+  try {
+    const mimeType = pickRecorderType();
+    if (!mimeType) throw new Error("This browser can't record video. Try Chrome, Edge or Firefox.");
+
+    status.textContent = "Reading and packing the file…";
+    const data = new Uint8Array(await file.arrayBuffer());
+    const reel = await buildReel(data, file.name, {
+      compress: $("encode-compress").checked,
+      password: $("encode-password").value,
+    });
+    const bits = toBits(reel);
+    const total = Math.max(1, Math.ceil(bits.length / PAYLOAD_BITS));
+
+    // captureStream(0) only emits a frame when we call requestFrame(), so every copy is deliberate
+    const stream = canvas.captureStream(0);
+    const track = stream.getVideoTracks()[0];
+    const recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 8_000_000 });
+    const chunks = [];
+    recorder.ondataavailable = (e) => e.data.size && chunks.push(e.data);
+    const stopped = new Promise((r) => (recorder.onstop = r));
+    recorder.start();
+
+    const started = performance.now();
+    for (let idx = 0; idx < total; idx++) {
+      paintCells(ctx, frameCells(bits, idx, total));
+      for (let c = 0; c < COPIES; c++) {
+        track.requestFrame();
+        await sleep(COPY_GAP_MS);
+      }
+      meter.style.width = `${((idx + 1) / total) * 100}%`;
+      const left = ((performance.now() - started) / (idx + 1)) * (total - idx - 1) / 1000;
+      status.textContent = `Recording frame ${idx + 1} of ${total}` + (total > 3 ? ` · about ${Math.ceil(left)} s left` : "");
+    }
+
+    recorder.stop();
+    await stopped;
+    const ext = mimeType.startsWith("video/mp4") ? "mp4" : "webm";
+    const video = new Blob(chunks, { type: mimeType.split(";")[0] });
+    saveBlob(video, `${file.name}.${ext}`);
+    status.textContent = `Done: ${formatBytes(data.length)} stored in a ${formatBytes(video.size)} video (${total} frames).`;
+    toast("Video saved. Keep this tab in front while recording longer files.");
+  } catch (err) {
+    console.error(err);
+    status.textContent = "Encoding failed.";
+    toast(err.message, true);
+  } finally {
+    go.disabled = false;
+  }
+});
