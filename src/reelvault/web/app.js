@@ -320,3 +320,133 @@ $("encode-go").addEventListener("click", async () => {
     go.disabled = false;
   }
 });
+
+// ================================================================
+// Decode
+// ================================================================
+function cellLevels(ctx) {
+  // Mean grey level of each cell (same weights as OpenCV's BGR2GRAY)
+  const px = ctx.getImageData(0, 0, SIDE, SIDE).data;
+  const levels = new Float32Array(CELLS);
+  for (let y = 0; y < SIDE; y++) {
+    const row = ((y / BLOCK) | 0) * GRID;
+    for (let x = 0; x < SIDE; x++) {
+      const i = (y * SIDE + x) * 4;
+      levels[row + ((x / BLOCK) | 0)] += 0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2];
+    }
+  }
+  for (let c = 0; c < CELLS; c++) levels[c] /= BLOCK * BLOCK;
+  return levels;
+}
+
+function readBits(levels, offset, width) {
+  let v = 0;
+  for (let i = 0; i < width; i++) v = v * 2 + (levels[offset + i] > 127 ? 1 : 0);
+  return v;
+}
+
+function frameHeader(levels) {
+  return {
+    idx: readBits(levels, 0, INDEX_BITS),
+    total: readBits(levels, INDEX_BITS, COUNT_BITS),
+    len: readBits(levels, INDEX_BITS + COUNT_BITS, LEN_BITS),
+  };
+}
+
+function assemble(sums, seen, totals) {
+  if (!sums.size) throw new Error("No ReelVault frames found in this video.");
+  // Majority vote on the frame count, in case a damaged frame reported a wrong one
+  const total = [...totals.entries()].sort((a, b) => b[1] - a[1])[0][0];
+  const missing = [];
+  for (let i = 0; i < total; i++) if (!sums.has(i)) missing.push(i);
+  if (missing.length) {
+    throw new Error(`${missing.length} of ${total} frames were missed (index ${missing.slice(0, 5).join(", ")}${missing.length > 5 ? "…" : ""}). ` +
+      "Keep this tab in front and try again.");
+  }
+  const bits = [];
+  for (let i = 0; i < total; i++) {
+    const n = seen.get(i);
+    const levels = sums.get(i).map((v) => v / n);
+    const { len } = frameHeader(levels);
+    for (let j = 0; j < len; j++) bits.push(levels[HEADER_BITS + j] > 127 ? 1 : 0);
+  }
+  const bytes = new Uint8Array(bits.length >> 3);
+  for (let i = 0; i < bytes.length; i++) {
+    let b = 0;
+    for (let k = 0; k < 8; k++) b = (b << 1) | bits[i * 8 + k];
+    bytes[i] = b;
+  }
+  return bytes;
+}
+
+$("decode-go").addEventListener("click", async () => {
+  const file = decodeFile();
+  if (!file) return;
+  const go = $("decode-go"), status = $("decode-status"), meter = $("decode-meter");
+  const canvas = $("decode-canvas"), ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const video = $("decode-video");
+  go.disabled = true;
+  $("decode-work").hidden = false;
+  meter.style.width = "0%";
+  status.textContent = "Opening the video…";
+
+  // Every copy of a frame adds its cell levels; the average decides each bit
+  const sums = new Map(), seen = new Map(), totals = new Map();
+  const url = URL.createObjectURL(file);
+  let finished = false;
+
+  const finish = async (error) => {
+    if (finished) return;
+    finished = true;
+    video.pause();
+    URL.revokeObjectURL(url);
+    try {
+      if (error) throw error;
+      status.textContent = "Checking and unpacking…";
+      const reel = assemble(sums, seen, totals);
+      const { name, data } = await openReel(reel, $("decode-password").value);
+      saveBlob(new Blob([data]), name);
+      meter.style.width = "100%";
+      status.textContent = `Recovered ${name} (${formatBytes(data.length)}). Checksum OK.`;
+      toast(`Saved ${name}`);
+    } catch (err) {
+      console.error(err);
+      status.textContent = "Decoding failed.";
+      toast(err.message, true);
+    } finally {
+      go.disabled = false;
+    }
+  };
+
+  const onFrame = () => {
+    if (finished) return;
+    ctx.drawImage(video, 0, 0, SIDE, SIDE);
+    const levels = cellLevels(ctx);
+    const { idx, total, len } = frameHeader(levels);
+    if (len <= PAYLOAD_BITS && total > 0 && idx < total && total < 2 ** 24) {
+      totals.set(total, (totals.get(total) || 0) + 1);
+      if (sums.has(idx)) {
+        const acc = sums.get(idx);
+        for (let c = 0; c < CELLS; c++) acc[c] += levels[c];
+        seen.set(idx, seen.get(idx) + 1);
+      } else {
+        sums.set(idx, levels);
+        seen.set(idx, 1);
+      }
+    }
+    if (video.duration) meter.style.width = `${Math.min(99, (video.currentTime / video.duration) * 100)}%`;
+    status.textContent = `Reading frames… ${sums.size} found`;
+    if (!video.ended) video.requestVideoFrameCallback(onFrame);
+  };
+
+  video.onerror = () => finish(new Error("This browser can't play that video file."));
+  // The last frame's callback can come before 'ended' or not at all, so 'ended' also finishes
+  video.onended = () => setTimeout(() => finish(), 100);
+  video.src = url;
+  video.requestVideoFrameCallback(onFrame);
+  try {
+    await video.play();
+  } catch (err) {
+    finish(new Error("Couldn't play the video: " + err.message));
+  }
+});
