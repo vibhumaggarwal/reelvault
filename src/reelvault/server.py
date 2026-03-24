@@ -6,7 +6,8 @@ HTTP API.
     POST /api/inspect  form: file (video)                              -> JSON header info
     GET  /api/health
 
-Run with `reelvault serve` or `uvicorn reelvault.server:app`.
+The browser app is served at /. Run with `reelvault serve` or
+`uvicorn reelvault.server:app`.
 """
 
 import os
@@ -17,6 +18,7 @@ from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
+from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
 from . import __version__, decode, encode, inspect
@@ -112,3 +114,7 @@ def api_inspect(file: UploadFile = File(...)):
         raise HTTPException(422, str(e))
     finally:
         _remove(src)
+
+
+# Mounted last so the /api routes above take priority
+app.mount("/", StaticFiles(directory=os.path.join(os.path.dirname(__file__), "web"), html=True), name="web")

@@ -4,6 +4,7 @@ reelvault encode report.pdf --robust      -> report.pdf.mp4   (survives re-uploa
 reelvault encode photos/ -p               -> photos.avi       (folder, asks for a password)
 reelvault decode report.pdf.mp4           -> report.pdf
 reelvault info report.pdf.mp4
+reelvault serve                           -> web app + API on http://127.0.0.1:8000
 """
 
 import argparse
@@ -96,6 +97,15 @@ def cmd_info(args):
         print(f"{k + ':':<11}{v}")
 
 
+def cmd_serve(args):
+    try:
+        import uvicorn
+    except ImportError:
+        sys.exit("error: the server needs extra packages: pip install 'reelvault[server]'")
+    print(f"ReelVault on http://{args.host}:{args.port}")
+    uvicorn.run("reelvault.server:app", host=args.host, port=args.port, log_level="warning")
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="reelvault", description="Store any file inside a video and get it back.")
     p.add_argument("--version", action="version", version=f"reelvault {__version__}")
@@ -120,6 +130,11 @@ def main(argv=None):
     i = sub.add_parser("info", help="show what a video contains")
     i.add_argument("video")
     i.set_defaults(func=cmd_info)
+
+    s = sub.add_parser("serve", help="run the web app and HTTP API")
+    s.add_argument("--host", default="127.0.0.1")
+    s.add_argument("--port", type=int, default=8000)
+    s.set_defaults(func=cmd_serve)
 
     args = p.parse_args(argv)
     try:

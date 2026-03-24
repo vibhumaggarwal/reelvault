@@ -48,3 +48,9 @@ def test_garbage_upload_is_422():
 
 def test_health():
     assert client.get("/api/health").json()["status"] == "ok"
+
+
+def test_serves_web_app():
+    r = client.get("/")
+    assert r.status_code == 200 and "<title>ReelVault</title>" in r.text
+    assert client.get("/app.js").status_code == 200
