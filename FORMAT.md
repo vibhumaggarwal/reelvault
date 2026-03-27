@@ -63,7 +63,7 @@ Each frame is a 128×128 grid of cells, one bit per cell, read row by row. A 1 i
 | 64–79 | payload bits in this frame (≤ 16,304) |
 | 80– | payload bits (the reel buffer as a bit stream, MSB of each byte first) |
 
-Writers may repeat frames. The Python writer repeats each frame twice, and the browser records each frame several times.
+Writers may repeat frames: both the Python writer and the browser emit each frame 3 times by default, because browsers decode by playing the video and can skip frames.
 
 **Decoding:**
 

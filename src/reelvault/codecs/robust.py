@@ -52,7 +52,7 @@ def _from_bits(bits) -> int:
     return out
 
 
-def encode(buf: bytes, block: int = 4, repeat: int = 2) -> Iterator[np.ndarray]:
+def encode(buf: bytes, block: int = 4, repeat: int = 3) -> Iterator[np.ndarray]:
     bits = np.unpackbits(np.frombuffer(buf, np.uint8))
     total = frame_count(len(buf))
     for idx in range(total):

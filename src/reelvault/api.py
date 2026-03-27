@@ -51,7 +51,7 @@ class Reel:
 
 def encode(source: Source, output: Union[str, os.PathLike], *, name: Optional[str] = None,
            robust: bool = False, compress: bool = True, password: Optional[str] = None,
-           fps: int = 30, block: int = 4, repeat: int = 2, progress: Progress = None) -> str:
+           fps: int = 30, block: int = 4, repeat: int = 3, progress: Progress = None) -> str:
     """
     Store `source` in a video at `output` and return the output path.
 
@@ -62,6 +62,9 @@ def encode(source: Source, output: Union[str, os.PathLike], *, name: Optional[st
     (.avi or .mkv). robust=True draws black/white blocks that survive lossy
     codecs (.mp4, .webm), re-uploads and resizing, at roughly 3x the size.
 
+    repeat is how many times each robust frame is written. Browsers decode
+    by playing the video and can skip frames, so 3 copies keeps every frame
+    readable there; 1 is enough for the Python decoder alone.
     compress=True deflates the data first when that makes it smaller.
     password encrypts it with AES-256-GCM; the filename stays readable.
     progress, if given, is called as progress(frames_done, frames_total).
