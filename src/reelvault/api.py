@@ -82,14 +82,20 @@ def encode(source: Source, output: Union[str, os.PathLike], *, name: Optional[st
     flags = header.FLAG_FOLDER if is_folder else 0
     buf = packing.pack(data, name, compress=compress, password=password, flags=flags)
     _ensure_parent(output)
-    if robust:
-        side = robust_codec.frame_size(block)
-        total = robust_codec.frame_count(len(buf)) * repeat
-        video.write(output, _track(robust_codec.encode(buf, block, repeat), total, progress), (side, side), fps)
-    else:
-        w, h = dense.DEFAULT_SIZE
-        total = max(1, -(-len(buf) // (w * h * 3)))
-        video.write(output, _track(dense.encode(buf), total, progress), dense.DEFAULT_SIZE, fps)
+    try:
+        if robust:
+            side = robust_codec.frame_size(block)
+            total = robust_codec.frame_count(len(buf)) * repeat
+            video.write(output, _track(robust_codec.encode(buf, block, repeat), total, progress), (side, side), fps)
+        else:
+            w, h = dense.DEFAULT_SIZE
+            total = max(1, -(-len(buf) // (w * h * 3)))
+            video.write(output, _track(dense.encode(buf), total, progress), dense.DEFAULT_SIZE, fps)
+    except BaseException:
+        # Don't leave a half-written video that looks like a real one (also on Ctrl-C)
+        if os.path.exists(output):
+            os.remove(output)
+        raise
     return output
 
 

@@ -65,3 +65,14 @@ def test_progress_callback(tmp_path):
     seen = []
     reelvault.decode(out, progress=lambda d, t: seen.append(d))
     assert seen and seen[0] == 1
+
+
+def test_failed_encode_leaves_no_partial_file(tmp_path):
+    out = tmp_path / "partial.avi"
+
+    def boom(done, total):
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        reelvault.encode(b"x" * 10, out, progress=boom)
+    assert not out.exists()
