@@ -395,9 +395,23 @@ $("decode-go").addEventListener("click", async () => {
   const url = URL.createObjectURL(file);
   let finished = false;
 
+  // Hidden tabs stop delivering frame callbacks while the video keeps playing,
+  // which would silently skip frames, so pause until the tab is visible again
+  const onVisibility = () => {
+    if (finished) return;
+    if (document.hidden) {
+      video.pause();
+    } else {
+      status.textContent = `Reading frames… ${sums.size} found`;
+      video.play().catch(() => {});
+    }
+  };
+  document.addEventListener("visibilitychange", onVisibility);
+
   const finish = async (error) => {
     if (finished) return;
     finished = true;
+    document.removeEventListener("visibilitychange", onVisibility);
     video.pause();
     URL.revokeObjectURL(url);
     try {
@@ -435,7 +449,7 @@ $("decode-go").addEventListener("click", async () => {
       }
     }
     if (video.duration) meter.style.width = `${Math.min(99, (video.currentTime / video.duration) * 100)}%`;
-    status.textContent = `Reading frames… ${sums.size} found`;
+    status.textContent = `Reading frames… ${sums.size} found` + (document.hidden ? " (paused while this tab is hidden)" : "");
     if (!video.ended) video.requestVideoFrameCallback(onFrame);
   };
 
