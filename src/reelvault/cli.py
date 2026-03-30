@@ -44,6 +44,12 @@ class _Bar:
 
 
 def _ask_password(confirm: bool) -> str:
+    # For scripts: REELVAULT_PASSWORD skips the prompt
+    env = os.environ.get("REELVAULT_PASSWORD")
+    if env:
+        return env
+    if not sys.stdin.isatty():
+        sys.exit("error: a password is needed; set REELVAULT_PASSWORD when not running interactively")
     pw = getpass.getpass("Password: ")
     if confirm and getpass.getpass("Repeat password: ") != pw:
         sys.exit("error: passwords don't match")
@@ -115,7 +121,8 @@ def main(argv=None):
     e.add_argument("input")
     e.add_argument("-o", "--output", help="video path (.avi/.mkv lossless, .mp4/.webm with --robust)")
     e.add_argument("--robust", action="store_true", help="survive compression and re-uploads (~3x larger)")
-    e.add_argument("-p", "--password", action="store_true", help="encrypt; you'll be asked for a password")
+    e.add_argument("-p", "--password", action="store_true",
+                   help="encrypt; asks for a password (or reads REELVAULT_PASSWORD)")
     e.add_argument("--no-compress", action="store_true", help="skip deflate compression")
     e.add_argument("--fps", type=int, default=30)
     e.add_argument("-f", "--force", action="store_true", help="overwrite the output")

@@ -40,7 +40,7 @@ The core needs only `numpy` and `opencv-python`. The extras add:
 ```bash
 reelvault encode report.pdf               # report.pdf.avi
 reelvault encode report.pdf --robust      # report.pdf.mp4
-reelvault encode photos/ -p               # a whole folder, asks for a password
+reelvault encode photos/ -p               # a whole folder, asks for a password (or set REELVAULT_PASSWORD)
 reelvault info report.pdf.mp4             # name, size, mode, encrypted? (no password needed)
 reelvault decode report.pdf.mp4           # restores report.pdf (or the folder)
 reelvault serve                           # web app + API on http://127.0.0.1:8000

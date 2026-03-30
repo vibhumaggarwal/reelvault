@@ -26,7 +26,7 @@ reelvault = "reelvault.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-reelvault = ["web/*"]
+reelvault = ["web/*", "py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
