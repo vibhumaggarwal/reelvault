@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "reelvault"
-version = "0.1.0"
+version = "1.0.0"
 description = "Store any file inside a video and get it back byte-for-byte"
 readme = "README.md"
 license = { text = "MIT" }
