@@ -17,7 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 crypto = ["cryptography>=41"]
 server = ["fastapi>=0.110", "uvicorn>=0.25", "python-multipart>=0.0.9"]
-dev = ["pytest>=7", "httpx", "cryptography>=41", "fastapi>=0.110", "uvicorn>=0.25", "python-multipart>=0.0.9"]
+dev = ["pytest>=7", "httpx", "playwright>=1.40", "cryptography>=41", "fastapi>=0.110", "uvicorn>=0.25", "python-multipart>=0.0.9"]
 
 [project.scripts]
 reelvault = "reelvault.cli:main"
